@@ -1,0 +1,15 @@
+atproto>=0.0.46
+requests>=2.31.0
+schedule>=1.2.0
+python-dotenv>=1.0.0
+nltk>=3.8.1
+scikit-learn>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+wordcloud>=1.9.2
+textblob>=0.17.1
+sentence-transformers>=2.2.0
+umap-learn>=0.5.0
+tf-keras>=2.19.0
