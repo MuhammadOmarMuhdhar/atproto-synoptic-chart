@@ -1,0 +1,259 @@
+import os
+import json
+import logging
+import pandas as pd
+from datetime import datetime, timedelta
+import sys
+
+# Add parent directory to path to import existing clients
+sys.path.append('..')
+from clients.bluesky import Client as BlueskyClient
+from clients.bigQuery import Client as BigQueryClient
+from featureEngineering.encoder import encoder
+from featureEngineering import density
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+class ATProtoETL:
+    """
+    AT Proto Synoptic Chart ETL Pipeline
+    Collects Bluesky posts, generates UMAP embeddings, and calculates density grids.
+    """
+    
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # Load environment variables
+        self.bigquery_credentials = json.loads(os.environ['BIGQUERY_CREDENTIALS_JSON'])
+        self.project_id = os.environ['BIGQUERY_PROJECT_ID']
+        self.dataset_id = os.environ['BIGQUERY_DATASET_ID']
+        self.posts_table = os.environ['BIGQUERY_TABLE_ID_POSTS']
+        self.density_table = os.environ['BIGQUERY_TABLE_ID_DENSITY']
+        
+        # Initialize clients
+        self.bluesky_client = None
+        self.bigquery_client = None
+        
+        # ETL configuration
+        self.batch_size = 100
+        self.density_interval_minutes = 30
+        self.essential_columns = [
+            'uri', 'text', 'author', 'like_count', 'reply_count', 'repost_count', 
+            'date', 'collected_at', 'UMAP1', 'UMAP2', 'UMAP3', 'UMAP4', 'UMAP5'
+        ]
+    
+    def initialize_clients(self):
+        """Initialize Bluesky and BigQuery clients"""
+        self.logger.info("Initializing clients")
+        
+        self.bluesky_client = BlueskyClient()
+        self.bigquery_client = BigQueryClient(self.bigquery_credentials, self.project_id)
+        
+        # Authenticate with Bluesky
+        if not self.bluesky_client.authenticate():
+            raise Exception("Failed to authenticate with Bluesky API")
+        
+        self.logger.info("Successfully authenticated with all clients")
+    
+    def extract_posts(self):
+        """Extract posts from Bluesky"""
+        self.logger.info("Extracting posts from Bluesky")
+        
+        posts = self.bluesky_client.fetch_popular_posts(
+            limit=self.batch_size,
+            min_length=30,
+            max_length=280
+        )
+        
+        if not posts:
+            self.logger.warning("No posts retrieved from Bluesky")
+            return None
+        
+        self.logger.info(f"Retrieved {len(posts)} posts from Bluesky")
+        return posts
+    
+    def transform_posts(self, posts):
+        """Transform posts by adding UMAP embeddings and cleaning columns"""
+        self.logger.info("Transforming posts with UMAP embeddings")
+        
+        # Convert to DataFrame and add timestamp
+        posts_df = pd.DataFrame(posts)
+        posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
+        
+        # Generate UMAP embeddings
+        embed = encoder()
+        embedded_df = embed.model(posts_df, text_col='text')
+        
+        if embedded_df is None or 'UMAP1' not in embedded_df.columns:
+            self.logger.error("UMAP embedding failed - using posts without embeddings")
+            # Keep only essential columns without UMAP
+            essential_cols_no_umap = [col for col in self.essential_columns 
+                                    if col in posts_df.columns and not col.startswith('UMAP')]
+            return posts_df[essential_cols_no_umap]
+        
+        self.logger.info("Successfully generated UMAP embeddings")
+        
+        # Keep only essential columns including UMAP coordinates
+        available_cols = [col for col in self.essential_columns if col in embedded_df.columns]
+        return embedded_df[available_cols]
+    
+    def load_posts(self, posts_df):
+        """Load posts to BigQuery"""
+        self.logger.info("Loading posts to BigQuery")
+        
+        self.bigquery_client.append(
+            posts_df,
+            self.dataset_id,
+            self.posts_table,
+            create_if_not_exists=True
+        )
+        
+        self.logger.info(f"Successfully loaded {len(posts_df)} posts to BigQuery")
+    
+    def should_calculate_density(self):
+        """Check if density should be calculated based on timing"""
+        try:
+            query = f"""
+            SELECT MAX(calculated_at) as last_calculation
+            FROM `{self.project_id}.{self.dataset_id}.{self.density_table}`
+            """
+            
+            result = self.bigquery_client.execute_query(query)
+            
+            if len(result) == 0 or pd.isna(result.iloc[0]['last_calculation']):
+                self.logger.info("No previous density calculation found - will calculate")
+                return True
+            
+            last_calculation = pd.to_datetime(result.iloc[0]['last_calculation'], utc=True)
+            time_since_last = pd.Timestamp.now(tz='UTC') - last_calculation
+            
+            should_calculate = time_since_last > timedelta(minutes=self.density_interval_minutes)
+            
+            self.logger.info(f"Last density calculation: {last_calculation}, "
+                           f"Time since: {time_since_last}, "
+                           f"Should calculate: {should_calculate}")
+            
+            return should_calculate
+            
+        except Exception as e:
+            self.logger.warning(f"Error checking last density calculation, will calculate: {e}")
+            return True
+    
+    def calculate_and_load_density(self):
+        """Calculate density from recent posts and load to BigQuery"""
+        self.logger.info("Calculating density from recent posts")
+        
+        # Get recent posts with UMAP coordinates (last 24 hours)
+        recent_posts_query = f"""
+        SELECT uri, text, author, like_count, reply_count, repost_count, date, collected_at,
+               UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
+        FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
+        WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+          AND UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
+        ORDER BY collected_at DESC
+        LIMIT 10000
+        """
+        
+        recent_posts_df = self.bigquery_client.execute_query(recent_posts_query)
+        
+        if len(recent_posts_df) < 100:
+            self.logger.warning(f"Not enough recent posts for density calculation: {len(recent_posts_df)}")
+            return False
+        
+        self.logger.info(f"Processing {len(recent_posts_df)} posts for density calculation")
+        
+        # Calculate density using existing UMAP coordinates
+        density_result = density.model(
+            recent_posts_df,
+            x_col='UMAP1',
+            y_col='UMAP2',
+            base_resolution=50,  # Lower resolution for cloud function
+            sigma=1.5,
+            verbose=True
+        )
+        
+        if density_result is None:
+            self.logger.warning("Density calculation returned None")
+            return False
+        
+        # Create density DataFrame for storage
+        density_df = pd.DataFrame({
+            'x': density_result['x_flat'],
+            'y': density_result['y_flat'],
+            'density': density_result['density_flat'],
+            'calculated_at': pd.Timestamp.now(tz='UTC'),
+            'posts_count': len(recent_posts_df)
+        })
+        
+        # Save density to BigQuery
+        self.logger.info("Loading density data to BigQuery")
+        self.bigquery_client.append(
+            density_df,
+            self.dataset_id,
+            self.density_table,
+            create_if_not_exists=True
+        )
+        
+        self.logger.info(f"Successfully loaded {len(density_df)} density points to BigQuery")
+        return True
+    
+    def run_etl(self):
+        """Run the complete ETL pipeline"""
+        try:
+            self.logger.info("Starting AT Proto synoptic chart ETL pipeline")
+            
+            # Initialize clients
+            self.initialize_clients()
+            
+            # Extract posts
+            posts = self.extract_posts()
+            if posts is None:
+                return {"status": "success", "message": "No new posts to process"}
+            
+            # Transform posts
+            posts_df = self.transform_posts(posts)
+            
+            # Load posts
+            self.load_posts(posts_df)
+            
+            # Check if density calculation is needed
+            density_calculated = False
+            if self.should_calculate_density():
+                density_calculated = self.calculate_and_load_density()
+            else:
+                self.logger.info("Skipping density calculation - not time yet")
+            
+            # Return success response
+            return {
+                "status": "success",
+                "posts_collected": len(posts_df),
+                "density_calculated": density_calculated,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in ETL pipeline: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+# Cloud Function entry point
+def collect_and_process_posts(request):
+    """
+    Cloud Function entry point for the ETL pipeline.
+    Runs every 10 minutes to collect posts, calculates density every 30 minutes.
+    """
+    etl = ATProtoETL()
+    return etl.run_etl()
+
+# For local testing
+if __name__ == "__main__":
+    # Mock request object for local testing
+    class MockRequest:
+        pass
+    
+    result = collect_and_process_posts(MockRequest())
+    print(json.dumps(result, indent=2))

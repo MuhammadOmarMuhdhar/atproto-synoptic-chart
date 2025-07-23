@@ -1,5 +1,6 @@
 from sentence_transformers import SentenceTransformer
 from umap import UMAP
+from sklearn.decomposition import PCA
 import torch
 import numpy as np
 import pickle
@@ -9,14 +10,16 @@ import tensorflow as tf
 def run(posts,
         model_name='all-MiniLM-L6-v2',
         batch_size=100,
-        umap_components=2,
+        umap_components=5,
         random_state=42,
-        min_dist=0.1,
+        min_dist=0.5,
         n_neighbors=15,
         device=None,
         umap_model_path=None,
         use_parametric=False,
-        skip_embedding=False):
+        skip_embedding=False,
+        use_pca=True,
+        pca_components=50):
     """
     Efficiently encode Bluesky post text in batches using sentence transformers,
     and add UMAP dimensionality reduction using either standard UMAP or saved Parametric UMAP.
@@ -35,9 +38,9 @@ def run(posts,
     random_state : int, optional
         Random seed for UMAP for reproducibility (default: 42)
     min_dist : float, optional
-        UMAP min_dist parameter controlling how tightly points are packed (default: 0.1)
+        UMAP min_dist parameter controlling how tightly points are packed (default: 0.3)
     n_neighbors : int, optional
-        UMAP n_neighbors parameter controlling local versus global structure (default: 15)
+        UMAP n_neighbors parameter controlling local versus global structure (default: 8)
     device : str, optional
         Device to run the model on ('cpu', 'cuda', 'mps', etc.)
         If None, will use CUDA if available, otherwise CPU
@@ -50,6 +53,10 @@ def run(posts,
     skip_embedding : bool, optional
         If True, skip embedding calculation and use existing 'embedding' field from posts.
         Useful when posts already contain precomputed embeddings (default: False)
+    use_pca : bool, optional
+        Whether to apply PCA before UMAP to reduce dimensionality and compress outliers (default: True)
+    pca_components : int, optional
+        Number of PCA components to use (default: 50)
         
     Returns:
     --------
@@ -130,6 +137,13 @@ def run(posts,
             print("⚠️  No valid post text found for embedding.")
             return posts
     
+    # Apply PCA before UMAP if requested
+    if len(all_embeddings) > 0 and use_pca and all_embeddings.shape[1] > pca_components:
+        print(f"🔄 Applying PCA to reduce from {all_embeddings.shape[1]} to {pca_components} dimensions...")
+        pca = PCA(n_components=pca_components, random_state=random_state)
+        all_embeddings = pca.fit_transform(all_embeddings)
+        print(f"✅ PCA explained variance ratio: {pca.explained_variance_ratio_.sum():.3f}")
+    
     # Apply UMAP dimensionality reduction
     if len(all_embeddings) > 0:
         # Choose UMAP approach based on parameters
@@ -169,7 +183,9 @@ def run(posts,
                 n_components=umap_components,
                 random_state=random_state,
                 min_dist=min_dist,
-                n_neighbors=n_neighbors
+                n_neighbors=n_neighbors,
+                spread=1.5,
+                metric='cosine'
             )
             umap_embeddings = umap_instance.fit_transform(all_embeddings)
             print(f"✅ Applied standard UMAP to {len(all_embeddings)} embeddings")
@@ -178,7 +194,7 @@ def run(posts,
         umap_embeddings_list = umap_embeddings.tolist()
         
         for idx, post_idx in enumerate(valid_indices):
-            posts[post_idx]['UMAP1'] = umap_embeddings_list[idx][0]
-            posts[post_idx]['UMAP2'] = umap_embeddings_list[idx][1]
+            for component_idx in range(umap_components):
+                posts[post_idx][f'UMAP{component_idx + 1}'] = umap_embeddings_list[idx][component_idx]
     
     return posts
