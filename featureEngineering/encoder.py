@@ -12,14 +12,15 @@ def run(posts,
         batch_size=100,
         umap_components=5,
         random_state=42,
-        min_dist=0.5,
-        n_neighbors=15,
+        min_dist=0.1,
+        n_neighbors=500,
         device=None,
         umap_model_path=None,
         use_parametric=False,
         skip_embedding=False,
         use_pca=True,
-        pca_components=50):
+        pca_components=50,
+        save_parametric_model_path=None):
     """
     Efficiently encode Bluesky post text in batches using sentence transformers,
     and add UMAP dimensionality reduction using either standard UMAP or saved Parametric UMAP.
@@ -57,6 +58,9 @@ def run(posts,
         Whether to apply PCA before UMAP to reduce dimensionality and compress outliers (default: True)
     pca_components : int, optional
         Number of PCA components to use (default: 50)
+    save_parametric_model_path : str, optional
+        Path to save the trained Parametric UMAP model when use_parametric=True and umap_model_path=None
+        Only used when creating a new parametric model (default: None)
         
     Returns:
     --------
@@ -147,19 +151,114 @@ def run(posts,
     # Apply UMAP dimensionality reduction
     if len(all_embeddings) > 0:
         # Choose UMAP approach based on parameters
-        if umap_model_path and os.path.exists(umap_model_path):
-            # Load saved Parametric UMAP model
-            print(f"Loading saved Parametric UMAP model from: {umap_model_path}")
-            try:
-                import tensorflow.compat.v1 as tf_v1
-                tf_v1.disable_v2_behavior()
-                umap_instance = tf.keras.models.load_model(umap_model_path, compile=False)
-            except:
-                print("Legacy loading failed, please retrain the model")
+        if umap_model_path:
+            # Check if it's a cloud storage path, hugging face path, or local path
+            is_cloud_path = umap_model_path.startswith('gs://')
+            is_hf_path = umap_model_path.startswith('hf://')
+            path_exists = is_cloud_path or is_hf_path or os.path.exists(umap_model_path)
             
-            # Transform using the loaded model
-            umap_embeddings = umap_instance.transform(all_embeddings)
-            print(f"✅ Applied saved Parametric UMAP to {len(all_embeddings)} embeddings")
+            if path_exists:
+                # Load saved Parametric UMAP model
+                print(f"Loading saved Parametric UMAP model from: {umap_model_path}")
+                try:
+                    if is_hf_path:
+                        # For Hugging Face, download model to local cache
+                        from huggingface_hub import snapshot_download
+                        
+                        # Parse repo_id from hf:// URL (e.g., hf://notMuhammad/atproto-topic-umap)
+                        repo_id = umap_model_path.replace('hf://', '')
+                        
+                        # Download model to local cache
+                        local_model_path = snapshot_download(
+                            repo_id=repo_id,
+                            repo_type="model"
+                        )
+                        print(f"Downloaded model from Hugging Face to: {local_model_path}")
+                        
+                        # Load from local cache directory
+                        from umap.parametric_umap import load_ParametricUMAP
+                        umap_instance = load_ParametricUMAP(os.path.join(local_model_path, "model"))
+                        
+                    elif is_cloud_path:
+                        # For cloud storage, download model to temp directory first
+                        import tempfile
+                        from google.cloud import storage
+                        
+                        temp_dir = tempfile.mkdtemp()
+                        
+                        # Parse bucket and path from gs:// URL
+                        path_parts = umap_model_path.replace('gs://', '').split('/', 1)
+                        bucket_name = path_parts[0]
+                        model_prefix = path_parts[1] if len(path_parts) > 1 else ''
+                        
+                        # Download model files
+                        client = storage.Client()
+                        bucket = client.bucket(bucket_name)
+                        
+                        # List and download all model files
+                        blobs = bucket.list_blobs(prefix=model_prefix)
+                        local_model_path = None
+                        
+                        for blob in blobs:
+                            if blob.name.endswith('/'):
+                                continue  # Skip directories
+                            
+                            # Create local file path
+                            local_file_path = os.path.join(temp_dir, os.path.basename(blob.name))
+                            blob.download_to_filename(local_file_path)
+                            print(f"Downloaded {blob.name} to {local_file_path}")
+                            
+                            # Set model path to directory for loading
+                            if local_model_path is None:
+                                local_model_path = temp_dir
+                        
+                        # Load from local temp directory
+                        from umap.parametric_umap import load_ParametricUMAP
+                        umap_instance = load_ParametricUMAP(local_model_path)
+                    else:
+                        # Load from local path
+                        from umap.parametric_umap import load_ParametricUMAP
+                        umap_instance = load_ParametricUMAP(umap_model_path)
+                        
+                except Exception as e:
+                    print(f"Failed to load model: {e}")
+                    print("Creating new Parametric UMAP instead...")
+                    # Fall through to create new model
+                    umap_instance = None
+                
+                if umap_instance is not None:
+                    # Transform using the loaded model
+                    umap_embeddings = umap_instance.transform(all_embeddings)
+                    print(f"✅ Applied saved Parametric UMAP to {len(all_embeddings)} embeddings")
+                else:
+                    # Create new model if loading failed
+                    print("Creating new Parametric UMAP...")
+                    from umap.parametric_umap import ParametricUMAP
+                    
+                    umap_instance = ParametricUMAP(
+                        n_components=umap_components,
+                        random_state=random_state,
+                        min_dist=min_dist,
+                        n_neighbors=n_neighbors,
+                        batch_size=min(batch_size, 128)
+                    )
+                    umap_embeddings = umap_instance.fit_transform(all_embeddings)
+                    print(f"✅ Created new Parametric UMAP for {len(all_embeddings)} embeddings")
+            else:
+                print(f"Model path {umap_model_path} does not exist, creating new model")
+                # Create new model
+                print("Creating new Parametric UMAP...")
+                from umap.parametric_umap import ParametricUMAP
+                
+                umap_instance = ParametricUMAP(
+                    n_components=umap_components,
+                    random_state=random_state,
+                    min_dist=min_dist,
+                    n_neighbors=n_neighbors,
+                    batch_size=min(batch_size, 128)
+                )
+                umap_embeddings = umap_instance.fit_transform(all_embeddings)
+                print(f"✅ Created new Parametric UMAP for {len(all_embeddings)} embeddings")
             
         elif use_parametric:
             # Create new Parametric UMAP
@@ -171,10 +270,21 @@ def run(posts,
                 random_state=random_state,
                 min_dist=min_dist,
                 n_neighbors=n_neighbors,
-                batch_size=min(batch_size, 128)  # Use smaller batch for memory efficiency
-            )
+                batch_size=min(batch_size, 128)
+                 )
+            
+
             umap_embeddings = umap_instance.fit_transform(all_embeddings)
             print(f"✅ Created new Parametric UMAP for {len(all_embeddings)} embeddings")
+
+            # Save the trained model if requested
+            if save_parametric_model_path:
+                os.makedirs(os.path.dirname(save_parametric_model_path), exist_ok=True)
+                try:
+                    umap_instance.save(save_parametric_model_path)
+                    print(f"✅ Saved Parametric UMAP model to {save_parametric_model_path}")
+                except Exception as e:
+                    print(f"⚠️ Failed to save Parametric UMAP model: {e}")
             
         else:
             # Use standard UMAP (original behavior)

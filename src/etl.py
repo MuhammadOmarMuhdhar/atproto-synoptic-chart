@@ -9,7 +9,7 @@ import sys
 sys.path.append('..')
 from clients.bluesky import Client as BlueskyClient
 from clients.bigQuery import Client as BigQueryClient
-from featureEngineering.encoder import encoder
+from featureEngineering import encoder
 from featureEngineering import density
 
 # Configure logging
@@ -62,8 +62,7 @@ class ATProtoETL:
         
         posts = self.bluesky_client.fetch_popular_posts(
             limit=self.batch_size,
-            min_length=30,
-            max_length=280
+            min_length=30
         )
         
         if not posts:
@@ -81,22 +80,37 @@ class ATProtoETL:
         posts_df = pd.DataFrame(posts)
         posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
         
-        # Generate UMAP embeddings
-        embed = encoder()
-        embedded_df = embed.model(posts_df, text_col='text')
-        
-        if embedded_df is None or 'UMAP1' not in embedded_df.columns:
-            self.logger.error("UMAP embedding failed - using posts without embeddings")
+        # Generate UMAP embeddings using saved parametric model
+        try:
+            embedded_posts = encoder.run(
+                posts_df.to_dict('records'), 
+                use_parametric=True,
+                umap_model_path='hf://notMuhammad/atproto-topic-umap',
+                skip_embedding=False,
+                use_pca=False
+            )
+            
+            embedded_df = pd.DataFrame(embedded_posts)
+            
+            if 'UMAP1' not in embedded_df.columns:
+                self.logger.error("UMAP embedding failed - no UMAP coordinates found")
+                # Keep only essential columns without UMAP
+                essential_cols_no_umap = [col for col in self.essential_columns 
+                                        if col in posts_df.columns and not col.startswith('UMAP')]
+                return posts_df[essential_cols_no_umap]
+            
+            self.logger.info("Successfully generated UMAP embeddings using parametric model")
+            
+            # Keep only essential columns including UMAP coordinates
+            available_cols = [col for col in self.essential_columns if col in embedded_df.columns]
+            return embedded_df[available_cols]
+            
+        except Exception as e:
+            self.logger.error(f"Error generating UMAP embeddings: {str(e)}")
             # Keep only essential columns without UMAP
             essential_cols_no_umap = [col for col in self.essential_columns 
                                     if col in posts_df.columns and not col.startswith('UMAP')]
             return posts_df[essential_cols_no_umap]
-        
-        self.logger.info("Successfully generated UMAP embeddings")
-        
-        # Keep only essential columns including UMAP coordinates
-        available_cols = [col for col in self.essential_columns if col in embedded_df.columns]
-        return embedded_df[available_cols]
     
     def load_posts(self, posts_df):
         """Load posts to BigQuery"""

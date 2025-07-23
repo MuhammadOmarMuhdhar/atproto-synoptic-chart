@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+
+# Model files (too large for git)
+umapModel/
+*.keras
+*.pkl
+
+# Data files
+*.json
+bluesky_posts_*.json
+
+# Testing files
+test_*.py
+*_test.py
+workspace.ipynb
+
+# Documentation
+CLAUDE.md
+README.md
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+upload_model.py
+collect_posts.py
+test_connections.py
+visuals/

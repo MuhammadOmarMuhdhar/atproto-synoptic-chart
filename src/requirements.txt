@@ -10,3 +10,5 @@ google-auth>=2.0.0
 atproto>=0.0.40
 scipy>=1.10.0
 functions-framework>=3.0.0
+huggingface_hub>=0.20.0
+tensorflow>=2.12.0
