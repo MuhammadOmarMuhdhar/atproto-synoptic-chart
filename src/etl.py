@@ -5,8 +5,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 
-# Add parent directory to path to import existing clients
-sys.path.append('..')
 from clients.bluesky import Client as BlueskyClient
 from clients.bigQuery import Client as BigQueryClient
 from featureEngineering import encoder

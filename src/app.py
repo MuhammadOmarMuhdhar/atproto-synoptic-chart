@@ -20,7 +20,7 @@ def trigger_etl():
         logger.info("ETL pipeline triggered")
         
         # Call your existing ETL function
-        result = collect_and_process_posts(request)
+        result = collect_and_process_posts(None)
         
         logger.info(f"ETL completed successfully: {result}")
         return jsonify(result)
