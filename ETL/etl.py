@@ -156,20 +156,20 @@ class ATProtoETL:
         """Calculate density from recent posts and load to BigQuery"""
         self.logger.info("Calculating density from recent posts")
         
-        # Get recent posts with UMAP coordinates (last 24 hours)
+        # Get recent posts with UMAP coordinates (last 30 minutes for real-time topic evolution)
         recent_posts_query = f"""
         SELECT uri, text, author, like_count, reply_count, repost_count, date, collected_at,
                UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
         FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
-        WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+        WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
           AND UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
         ORDER BY collected_at DESC
-        LIMIT 10000
+        LIMIT 1000
         """
         
         recent_posts_df = self.bigquery_client.execute_query(recent_posts_query)
         
-        if len(recent_posts_df) < 100:
+        if len(recent_posts_df) < 10:
             self.logger.warning(f"Not enough recent posts for density calculation: {len(recent_posts_df)}")
             return False
         
