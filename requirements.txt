@@ -17,6 +17,7 @@ huggingface_hub>=0.20.0
 # Cloud dependencies
 google-cloud-bigquery>=3.0.0
 google-auth>=2.0.0
+pyarrow>=10.0.0
 
 # AT Protocol
 atproto>=0.0.40
