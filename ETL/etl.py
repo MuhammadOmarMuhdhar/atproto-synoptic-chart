@@ -5,10 +5,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 
-from clients.bluesky import Client as BlueskyClient
-from clients.bigQuery import Client as BigQueryClient
-from feature_engineering import encoder
-from feature_engineering import density
+from ETL.clients.bluesky import Client as BlueskyClient
+from ETL.clients.bigQuery import Client as BigQueryClient
+from ETL.feature_engineering import encoder
+from ETL.feature_engineering import density
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
