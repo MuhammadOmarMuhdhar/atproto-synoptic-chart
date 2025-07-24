@@ -5,10 +5,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 
-from ETL.clients.bluesky import Client as BlueskyClient
-from ETL.clients.bigQuery import Client as BigQueryClient
-from ETL.feature_engineering import encoder
-from ETL.feature_engineering import density
+from clients.bluesky import Client as BlueskyClient
+from clients.bigQuery import Client as BigQueryClient
+from feature_engineering import encoder
+from feature_engineering import density
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +42,7 @@ class ATProtoETL:
         self.density_interval_minutes = 30
         self.essential_columns = [
             'uri', 'text', 'author', 'like_count', 'reply_count', 'repost_count', 
-            'date', 'collected_at', 'UMAP1', 'UMAP2', 'UMAP3', 'UMAP4', 'UMAP5'
+            'created_at', 'collected_at', 'UMAP1', 'UMAP2', 'UMAP3', 'UMAP4', 'UMAP5'
         ]
     
     def initialize_clients(self):
@@ -158,7 +162,7 @@ class ATProtoETL:
         
         # Get recent posts with UMAP coordinates (last 30 minutes for real-time topic evolution)
         recent_posts_query = f"""
-        SELECT uri, text, author, like_count, reply_count, repost_count, date, collected_at,
+        SELECT uri, text, author, like_count, reply_count, repost_count, created_at, collected_at,
                UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
         FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
         WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
@@ -172,6 +176,12 @@ class ATProtoETL:
         if len(recent_posts_df) < 10:
             self.logger.warning(f"Not enough recent posts for density calculation: {len(recent_posts_df)}")
             return False
+        
+        # Convert UMAP coordinates to numeric (BigQuery returns them as strings)
+        umap_cols = ['UMAP1', 'UMAP2', 'UMAP3', 'UMAP4', 'UMAP5']
+        for col in umap_cols:
+            if col in recent_posts_df.columns:
+                recent_posts_df[col] = pd.to_numeric(recent_posts_df[col], errors='coerce')
         
         self.logger.info(f"Processing {len(recent_posts_df)} posts for density calculation")
         
