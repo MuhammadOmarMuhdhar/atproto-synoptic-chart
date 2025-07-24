@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimized Density Contour Plot</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .slider {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .time-label {
+            font-weight: bold;
+            color: #333;
+            min-width: 120px;
+            text-align: center;
+            padding: 5px 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .chart-container {
+            text-align: center;
+        }
+        
+        .contour-path {
+            fill: none;
+            stroke-width: 1.5;
+            opacity: 0.8;
+        }
+        
+        .contour-fill {
+            stroke: none;
+            opacity: 0.6;
+        }
+        
+        .legend {
+            font-size: 12px;
+        }
+        
+        .axis {
+            font-size: 12px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 18px;
+            color: #666;
+        }
+        
+        .performance-info {
+            font-size: 11px;
+            color: #888;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Optimized Density Contour Plot - 30 Minute Intervals</h1>
+        
+        <div class="controls">
+            <h3>Time Controls</h3>
+            <div class="slider-container">
+                <span>Interval:</span>
+                <input type="range" id="timeSlider" class="slider" min="0" max="5" value="0" step="1">
+                <span class="time-label" id="timeLabel">Interval 0</span>
+            </div>
+            <div class="stats">
+                <div>Posts: <span id="postsCount">-</span></div>
+                <div>Density Range: <span id="densityRange">-</span></div>
+                <div>Contours: <span id="contourCount">-</span></div>
+            </div>
+            <div class="performance-info">
+                <span id="loadTime">Loading...</span> | 
+                <span id="renderTime">-</span>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <div id="loading" class="loading">Loading optimized data...</div>
+            <svg id="contourPlot"></svg>
+        </div>
+    </div>
+
+    <script>
+        const startTime = performance.now();
+        
+        const margin = { top: 40, right: 120, bottom: 60, left: 60 };
+        const width = 800 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+        
+        let contourData = null;
+        let currentInterval = 0;
+        
+        const svg = d3.select("#contourPlot")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+            
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+        const colorScale = d3.scaleSequential(d3.interpolateViridis);
+        
+        let xScale, yScale;
+        
+        // Load the preprocessed JSON data
+        d3.json("density_contours_optimized.json").then(function(data) {
+            const loadTime = performance.now() - startTime;
+            d3.select("#loadTime").text(`Load time: ${loadTime.toFixed(0)}ms`);
+            d3.select("#loading").style("display", "none");
+            
+            contourData = data;
+            
+            // Setup scales
+            const xExtent = data.metadata.x_extent;
+            const yExtent = data.metadata.y_extent;
+            const densityExtent = data.metadata.density_extent;
+            
+            xScale = d3.scaleLinear()
+                .domain(xExtent)
+                .range([0, width]);
+                
+            yScale = d3.scaleLinear()
+                .domain(yExtent)
+                .range([height, 0]);
+                
+            colorScale.domain(densityExtent);
+            
+            setupAxes();
+            setupLegend();
+            updatePlot();
+            
+            // Setup slider
+            d3.select("#timeSlider")
+                .attr("max", data.metadata.intervals.length - 1)
+                .on("input", function() {
+                    currentInterval = +this.value;
+                    const intervalName = data.metadata.intervals[currentInterval];
+                    d3.select("#timeLabel").text(`${intervalName.replace('_', ' ')}`);
+                    updatePlot();
+                });
+        }).catch(function(error) {
+            d3.select("#loading").text("Error loading data: " + error.message);
+            console.error("Error loading data:", error);
+        });
+        
+        function setupAxes() {
+            g.append("g")
+                .attr("class", "x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale).ticks(8));
+                
+            g.append("g")
+                .attr("class", "y-axis")
+                .call(d3.axisLeft(yScale).ticks(8));
+                
+            g.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 0 - margin.left)
+                .attr("x", 0 - (height / 2))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .text("Y Coordinate");
+                
+            g.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", `translate(${width / 2}, ${height + margin.bottom - 10})`)
+                .style("text-anchor", "middle")
+                .text("X Coordinate");
+        }
+        
+        function setupLegend() {
+            const legendWidth = 20;
+            const legendHeight = 200;
+            
+            const legend = g.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width + 30}, ${(height - legendHeight) / 2})`);
+                
+            const legendScale = d3.scaleLinear()
+                .domain(colorScale.domain())
+                .range([legendHeight, 0]);
+                
+            const legendAxis = d3.axisRight(legendScale)
+                .ticks(6)
+                .tickFormat(d3.format(".3f"));
+                
+            const defs = svg.append("defs");
+            
+            const gradient = defs.append("linearGradient")
+                .attr("id", "legend-gradient")
+                .attr("x1", "0%")
+                .attr("y1", "100%")
+                .attr("x2", "0%")
+                .attr("y2", "0%");
+                
+            const steps = 100;
+            for (let i = 0; i <= steps; i++) {
+                const percent = i / steps;
+                const value = colorScale.domain()[0] + percent * (colorScale.domain()[1] - colorScale.domain()[0]);
+                gradient.append("stop")
+                    .attr("offset", `${percent * 100}%`)
+                    .attr("stop-color", colorScale(value));
+            }
+            
+            legend.append("rect")
+                .attr("width", legendWidth)
+                .attr("height", legendHeight)
+                .style("fill", "url(#legend-gradient)")
+                .style("stroke", "#333")
+                .style("stroke-width", 1);
+                
+            legend.append("g")
+                .attr("transform", `translate(${legendWidth}, 0)`)
+                .call(legendAxis);
+                
+            legend.append("text")
+                .attr("transform", `translate(${legendWidth + 45}, ${legendHeight / 2}) rotate(90)`)
+                .style("text-anchor", "middle")
+                .style("font-size", "12px")
+                .text("Density");
+        }
+        
+        function updatePlot() {
+            if (!contourData) return;
+            
+            const renderStart = performance.now();
+            
+            const intervalName = contourData.metadata.intervals[currentInterval];
+            const intervalData = contourData.intervals[intervalName];
+            
+            if (!intervalData) return;
+            
+            // Update stats
+            const stats = intervalData.density_stats;
+            d3.select("#postsCount").text(intervalData.posts_count.toLocaleString());
+            d3.select("#densityRange").text(`${stats.min.toFixed(3)} - ${stats.max.toFixed(3)}`);
+            d3.select("#contourCount").text(intervalData.contour_paths.length);
+            
+            // Create line function for contour paths
+            const line = d3.line()
+                .x(d => xScale(d.x))
+                .y(d => yScale(d.y))
+                .curve(d3.curveLinear);
+            
+            // Remove existing contours
+            g.selectAll(".contour-path").remove();
+            g.selectAll(".contour-fill").remove();
+            
+            // Draw contour fills (for better visualization)
+            const contourFills = g.selectAll(".contour-fill")
+                .data(intervalData.contour_paths);
+                
+            contourFills.enter()
+                .append("g")
+                .attr("class", "contour-fill")
+                .each(function(d) {
+                    const group = d3.select(this);
+                    d.paths.forEach(path => {
+                        if (path.length > 3) { // Only draw paths with enough points
+                            group.append("path")
+                                .attr("d", line(path) + "Z") // Close the path
+                                .attr("fill", colorScale(d.level))
+                                .attr("opacity", 0.4)
+                                .attr("stroke", "none");
+                        }
+                    });
+                });
+            
+            // Draw contour lines
+            const contourPaths = g.selectAll(".contour-path")
+                .data(intervalData.contour_paths);
+                
+            contourPaths.enter()
+                .append("g")
+                .attr("class", "contour-path")
+                .each(function(d) {
+                    const group = d3.select(this);
+                    d.paths.forEach(path => {
+                        if (path.length > 2) { // Only draw paths with enough points
+                            group.append("path")
+                                .attr("d", line(path))
+                                .attr("stroke", colorScale(d.level))
+                                .attr("stroke-width", 1.2)
+                                .attr("fill", "none")
+                                .attr("opacity", 0.8);
+                        }
+                    });
+                });
+            
+            const renderTime = performance.now() - renderStart;
+            d3.select("#renderTime").text(`Render time: ${renderTime.toFixed(0)}ms`);
+        }
+    </script>
+</body>
+</html>

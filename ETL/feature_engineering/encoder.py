@@ -5,7 +5,6 @@ import torch
 import numpy as np
 import pickle
 import os
-import tensorflow as tf
 
 def run(posts,
         model_name='all-MiniLM-L6-v2',

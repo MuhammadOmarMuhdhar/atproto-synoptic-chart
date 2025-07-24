@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Density Contour Plot with Time Slider</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .slider {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .time-label {
+            font-weight: bold;
+            color: #333;
+            min-width: 100px;
+            text-align: center;
+            padding: 5px 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .chart-container {
+            text-align: center;
+        }
+        
+        .contour {
+            fill: none;
+            stroke: #333;
+            stroke-width: 1;
+        }
+        
+        .legend {
+            font-size: 12px;
+        }
+        
+        .axis {
+            font-size: 12px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 18px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Density Contour Plot - 30 Minute Intervals</h1>
+        
+        <div class="controls">
+            <h3>Time Controls</h3>
+            <div class="slider-container">
+                <span>Interval:</span>
+                <input type="range" id="timeSlider" class="slider" min="0" max="5" value="0" step="1">
+                <span class="time-label" id="timeLabel">Interval 0</span>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <div id="loading" class="loading">Loading data...</div>
+            <svg id="contourPlot"></svg>
+        </div>
+    </div>
+
+    <script>
+        const margin = { top: 40, right: 120, bottom: 60, left: 60 };
+        const width = 800 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+        
+        let data = [];
+        let intervals = [];
+        let currentInterval = 0;
+        
+        const svg = d3.select("#contourPlot")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+            
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+        const colorScale = d3.scaleSequential(d3.interpolateViridis);
+        
+        let xScale, yScale;
+        
+        d3.csv("density_30min_intervals.csv").then(function(csvData) {
+            d3.select("#loading").style("display", "none");
+            
+            csvData.forEach(d => {
+                d.x = +d.x;
+                d.y = +d.y;
+                d.density = +d.density;
+            });
+            
+            intervals = [...new Set(csvData.map(d => d.interval_name))].sort();
+            
+            data = intervals.map(interval => {
+                const intervalData = csvData.filter(d => d.interval_name === interval);
+                return {
+                    interval: interval,
+                    data: intervalData
+                };
+            });
+            
+            const allX = csvData.map(d => d.x);
+            const allY = csvData.map(d => d.y);
+            const allDensity = csvData.map(d => d.density);
+            
+            xScale = d3.scaleLinear()
+                .domain(d3.extent(allX))
+                .range([0, width]);
+                
+            yScale = d3.scaleLinear()
+                .domain(d3.extent(allY))
+                .range([height, 0]);
+                
+            colorScale.domain(d3.extent(allDensity));
+            
+            setupAxes();
+            setupLegend();
+            updatePlot();
+            
+            d3.select("#timeSlider")
+                .attr("max", intervals.length - 1)
+                .on("input", function() {
+                    currentInterval = +this.value;
+                    d3.select("#timeLabel").text(`Interval ${currentInterval}`);
+                    updatePlot();
+                });
+        });
+        
+        function setupAxes() {
+            g.append("g")
+                .attr("class", "x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale));
+                
+            g.append("g")
+                .attr("class", "y-axis")
+                .call(d3.axisLeft(yScale));
+                
+            g.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 0 - margin.left)
+                .attr("x", 0 - (height / 2))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .text("Y Coordinate");
+                
+            g.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", `translate(${width / 2}, ${height + margin.bottom - 10})`)
+                .style("text-anchor", "middle")
+                .text("X Coordinate");
+        }
+        
+        function setupLegend() {
+            const legendWidth = 20;
+            const legendHeight = 200;
+            
+            const legend = g.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width + 30}, ${(height - legendHeight) / 2})`);
+                
+            const legendScale = d3.scaleLinear()
+                .domain(colorScale.domain())
+                .range([legendHeight, 0]);
+                
+            const legendAxis = d3.axisRight(legendScale)
+                .ticks(5)
+                .tickFormat(d3.format(".2f"));
+                
+            const defs = svg.append("defs");
+            
+            const gradient = defs.append("linearGradient")
+                .attr("id", "legend-gradient")
+                .attr("x1", "0%")
+                .attr("y1", "100%")
+                .attr("x2", "0%")
+                .attr("y2", "0%");
+                
+            const steps = 100;
+            for (let i = 0; i <= steps; i++) {
+                const percent = i / steps;
+                const value = colorScale.domain()[0] + percent * (colorScale.domain()[1] - colorScale.domain()[0]);
+                gradient.append("stop")
+                    .attr("offset", `${percent * 100}%`)
+                    .attr("stop-color", colorScale(value));
+            }
+            
+            legend.append("rect")
+                .attr("width", legendWidth)
+                .attr("height", legendHeight)
+                .style("fill", "url(#legend-gradient)");
+                
+            legend.append("g")
+                .attr("transform", `translate(${legendWidth}, 0)`)
+                .call(legendAxis);
+                
+            legend.append("text")
+                .attr("transform", `translate(${legendWidth + 40}, ${legendHeight / 2}) rotate(90)`)
+                .style("text-anchor", "middle")
+                .text("Density");
+        }
+        
+        function updatePlot() {
+            if (!data || data.length === 0) return;
+            
+            const currentData = data[currentInterval];
+            if (!currentData) return;
+            
+            const densityGrid = currentData.data;
+            
+            const uniqueX = [...new Set(densityGrid.map(d => d.x))].sort((a, b) => a - b);
+            const uniqueY = [...new Set(densityGrid.map(d => d.y))].sort((a, b) => a - b);
+            
+            const gridWidth = uniqueX.length;
+            const gridHeight = uniqueY.length;
+            
+            const densityArray = new Array(gridWidth * gridHeight).fill(0);
+            
+            densityGrid.forEach(d => {
+                const xIndex = uniqueX.indexOf(d.x);
+                const yIndex = uniqueY.indexOf(d.y);
+                if (xIndex !== -1 && yIndex !== -1) {
+                    densityArray[yIndex * gridWidth + xIndex] = d.density;
+                }
+            });
+            
+            const contours = d3.contours()
+                .size([gridWidth, gridHeight])
+                .thresholds(10);
+                
+            const contourData = contours(densityArray);
+            
+            const contourPaths = g.selectAll(".contour")
+                .data(contourData);
+                
+            contourPaths.enter()
+                .append("path")
+                .attr("class", "contour")
+                .merge(contourPaths)
+                .attr("d", d3.geoPath())
+                .attr("fill", d => colorScale(d.value))
+                .attr("fill-opacity", 0.6)
+                .attr("stroke", "#333")
+                .attr("stroke-width", 0.5)
+                .attr("transform", d => {
+                    const scaleX = width / gridWidth;
+                    const scaleY = height / gridHeight;
+                    return `scale(${scaleX}, ${scaleY})`;
+                });
+                
+            contourPaths.exit().remove();
+        }
+    </script>
+</body>
+</html>
