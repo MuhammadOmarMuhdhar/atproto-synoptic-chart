@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from etl import collect_and_process_posts
+from ETL.etl import collect_and_process_posts
 import os
 import logging
 

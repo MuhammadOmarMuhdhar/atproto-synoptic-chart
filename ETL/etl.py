@@ -5,10 +5,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 
-from clients.bluesky import Client as BlueskyClient
-from clients.bigQuery import Client as BigQueryClient
-from featureEngineering import encoder
-from featureEngineering import density
+from ETL.clients.bluesky import Client as BlueskyClient
+from ETL.clients.bigQuery import Client as BigQueryClient
+from ETL.feature_engineering import encoder
+from ETL.feature_engineering import density
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
