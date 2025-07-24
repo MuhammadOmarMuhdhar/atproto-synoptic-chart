@@ -1,14 +1,22 @@
+# Core dependencies
 pandas>=2.0.0
 numpy>=1.24.0
+scipy>=1.10.0
+flask>=2.3.0
+
+# ML dependencies (minimal)
 scikit-learn>=1.3.0
 umap-learn>=0.5.0
 sentence-transformers>=2.2.0
+
+# Utility libraries
 langdetect>=1.0.9
 python-dotenv>=1.0.0
+huggingface_hub>=0.20.0
+
+# Cloud dependencies
 google-cloud-bigquery>=3.0.0
 google-auth>=2.0.0
+
+# AT Protocol
 atproto>=0.0.40
-scipy>=1.10.0
-flask>=2.3.0
-huggingface_hub>=0.20.0
-tensorflow>=2.12.0
