@@ -81,7 +81,7 @@ class ATProtoETL:
         
         # Convert to DataFrame and add timestamp
         posts_df = pd.DataFrame(posts)
-        posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
+        posts_df['collected_at'] = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M:%S UTC')
         
         # Convert timestamp columns to proper datetime, then back to string for BigQuery compatibility
         if 'created_at' in posts_df.columns:
@@ -198,7 +198,7 @@ class ATProtoETL:
         SELECT uri, text, author, like_count, reply_count, repost_count, created_at, collected_at,
                UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
         FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
-        WHERE TIMESTAMP(collected_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
+        WHERE PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', collected_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
           AND UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
         ORDER BY collected_at DESC
         LIMIT 1000
@@ -241,8 +241,9 @@ class ATProtoETL:
             'posts_count': len(recent_posts_df)
         })
         
-        # Ensure calculated_at is proper timestamp
+        # Ensure calculated_at is proper timestamp, then convert to string for BigQuery
         density_df['calculated_at'] = pd.to_datetime(density_df['calculated_at'], utc=True)
+        density_df['calculated_at'] = density_df['calculated_at'].dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         
         # Save density to BigQuery
         self.logger.info("Loading density data to BigQuery")
@@ -266,7 +267,7 @@ class ATProtoETL:
             density_query = f"""
             SELECT x, y, density, calculated_at, posts_count
             FROM `{self.project_id}.{self.dataset_id}.{self.density_table}`
-            WHERE TIMESTAMP(calculated_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            WHERE PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', calculated_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY calculated_at DESC
             """
             
@@ -284,7 +285,7 @@ class ATProtoETL:
                    UMAP1, UMAP2, created_at
             FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
             WHERE UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
-            AND SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', created_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            AND PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', created_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY created_at DESC
             LIMIT 5000
             """
