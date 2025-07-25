@@ -247,10 +247,6 @@ class ATProtoETL:
         
         self.logger.info(f"Successfully loaded {len(density_df)} density points to BigQuery")
         
-        # Check if data export is needed (hourly)
-        if self.should_export_data():
-            self.export_visualization_data()
-        
         return True
     
     def export_visualization_data(self):
@@ -359,11 +355,20 @@ class ATProtoETL:
             else:
                 self.logger.info("Skipping density calculation - not time yet")
             
+            # Check if data export is needed (independent of density - runs hourly)
+            data_exported = False
+            if self.should_export_data():
+                self.export_visualization_data()
+                data_exported = True
+            else:
+                self.logger.info("Skipping data export - not time yet")
+            
             # Return success response
             return {
                 "status": "success",
                 "posts_collected": len(posts_df),
                 "density_calculated": density_calculated,
+                "data_exported": data_exported,
                 "timestamp": datetime.now().isoformat()
             }
             
