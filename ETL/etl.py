@@ -343,6 +343,9 @@ class ATProtoETL:
                 subprocess.run(['git', 'fetch', 'origin', 'main'], check=True, capture_output=True)
                 subprocess.run(['git', 'checkout', '-b', 'main', 'origin/main'], check=True, capture_output=True)
                 
+                # Set up tracking branch properly
+                subprocess.run(['git', 'branch', '--set-upstream-to=origin/main', 'main'], check=True, capture_output=True)
+                
                 self.logger.info("Git repository initialized successfully")
             
             else:
@@ -358,9 +361,19 @@ class ATProtoETL:
             result = subprocess.run(['git', 'commit', '-m', commit_msg], capture_output=True, text=True)
             
             if result.returncode == 0:
-                # Push to GitHub
-                subprocess.run(['git', 'push', 'origin', 'main'], check=True, capture_output=True)
-                self.logger.info(f"Successfully pushed updated data to GitHub: {commit_msg}")
+                # Verify we have a valid branch to push
+                branch_check = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True)
+                current_branch = branch_check.stdout.strip()
+                self.logger.info(f"Current branch: {current_branch}")
+                
+                # Push to GitHub with explicit branch reference
+                if current_branch:
+                    subprocess.run(['git', 'push', 'origin', f'{current_branch}:main'], check=True, capture_output=True)
+                    self.logger.info(f"Successfully pushed updated data to GitHub: {commit_msg}")
+                else:
+                    # Fallback: push current HEAD to main
+                    subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True, capture_output=True)
+                    self.logger.info(f"Successfully pushed updated data to GitHub (HEAD): {commit_msg}")
             else:
                 self.logger.info("No changes to commit")
                 
