@@ -241,9 +241,8 @@ class ATProtoETL:
             'posts_count': len(recent_posts_df)
         })
         
-        # Ensure calculated_at is proper timestamp, then convert to string for BigQuery
+        # Ensure calculated_at is proper timestamp for BigQuery TIMESTAMP field
         density_df['calculated_at'] = pd.to_datetime(density_df['calculated_at'], utc=True)
-        density_df['calculated_at'] = density_df['calculated_at'].dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         
         # Save density to BigQuery
         self.logger.info("Loading density data to BigQuery")
@@ -267,7 +266,7 @@ class ATProtoETL:
             density_query = f"""
             SELECT x, y, density, calculated_at, posts_count
             FROM `{self.project_id}.{self.dataset_id}.{self.density_table}`
-            WHERE PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', calculated_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            WHERE calculated_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY calculated_at DESC
             """
             
@@ -285,7 +284,10 @@ class ATProtoETL:
                    UMAP1, UMAP2, created_at
             FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
             WHERE UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
-            AND PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', created_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            AND COALESCE(
+                SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', created_at),
+                SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', created_at)
+            ) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY created_at DESC
             LIMIT 5000
             """
