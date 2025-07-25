@@ -85,7 +85,7 @@ class ATProtoETL:
         
         # Convert timestamp columns to proper datetime
         if 'created_at' in posts_df.columns:
-            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], utc=True)
+            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], format='ISO8601', utc=True)
         
         # Generate UMAP embeddings using saved parametric model
         try:
