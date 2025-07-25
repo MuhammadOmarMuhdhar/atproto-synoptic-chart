@@ -14,7 +14,6 @@ umapModel/
 *.pkl
 
 # Data files
-*.json
 bluesky_posts_*.json
 
 # Testing files
@@ -44,3 +43,5 @@ upload_model.py
 collect_posts.py
 test_connections.py
 visuals/
+export_data.py
+clear_bigquery.py

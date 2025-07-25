@@ -40,6 +40,7 @@ class ATProtoETL:
         # ETL configuration
         self.batch_size = 100
         self.density_interval_minutes = 30
+        self.export_interval_minutes = 60
         self.essential_columns = [
             'uri', 'text', 'author', 'like_count', 'reply_count', 'repost_count', 
             'created_at', 'collected_at', 'UMAP1', 'UMAP2', 'UMAP3', 'UMAP4', 'UMAP5'
@@ -155,6 +156,33 @@ class ATProtoETL:
         except Exception as e:
             self.logger.warning(f"Error checking last density calculation, will calculate: {e}")
             return True
+
+    def should_export_data(self):
+        """Check if data export should happen based on timing (hourly)"""
+        try:
+            # Check if last_update.json exists and when it was created
+            import os
+            if not os.path.exists('data/last_update.json'):
+                self.logger.info("No previous export found - will export")
+                return True
+            
+            with open('data/last_update.json', 'r') as f:
+                update_info = json.load(f)
+            
+            last_export = pd.to_datetime(update_info['last_update'])
+            time_since_last = pd.Timestamp.now() - last_export
+            
+            should_export = time_since_last > timedelta(minutes=self.export_interval_minutes)
+            
+            self.logger.info(f"Last export: {last_export}, "
+                           f"Time since: {time_since_last}, "
+                           f"Should export: {should_export}")
+            
+            return should_export
+            
+        except Exception as e:
+            self.logger.warning(f"Error checking last export, will export: {e}")
+            return True
     
     def calculate_and_load_density(self):
         """Calculate density from recent posts and load to BigQuery"""
@@ -218,7 +246,92 @@ class ATProtoETL:
         )
         
         self.logger.info(f"Successfully loaded {len(density_df)} density points to BigQuery")
+        
+        # Check if data export is needed (hourly)
+        if self.should_export_data():
+            self.export_visualization_data()
+        
         return True
+    
+    def export_visualization_data(self):
+        """Export data for GitHub Pages visualization"""
+        try:
+            self.logger.info("Exporting visualization data")
+            
+            # Export density data (last 24 hours)
+            density_query = f"""
+            SELECT x, y, density, calculated_at, posts_count
+            FROM `{self.project_id}.{self.dataset_id}.{self.density_table}`
+            WHERE calculated_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            ORDER BY calculated_at DESC
+            """
+            
+            density_df = self.bigquery_client.execute_query(density_query)
+            
+            # Ensure data directory exists
+            import os
+            os.makedirs('data', exist_ok=True)
+            
+            density_df.to_json('data/density_data.json', orient='records', date_format='iso')
+            
+            # Export recent posts with UMAP coordinates
+            posts_query = f"""
+            SELECT uri, text, author, like_count, reply_count, repost_count, 
+                   UMAP1, UMAP2, created_at
+            FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
+            WHERE UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
+            AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            ORDER BY created_at DESC
+            LIMIT 5000
+            """
+            
+            posts_df = self.bigquery_client.execute_query(posts_query)
+            posts_df.to_json('data/posts.json', orient='records', date_format='iso')
+            
+            # Create update timestamp file
+            update_info = {
+                "last_update": datetime.now().isoformat(),
+                "density_points": len(density_df),
+                "posts_count": len(posts_df),
+                "time_slices": len(density_df['calculated_at'].unique()) if len(density_df) > 0 else 0
+            }
+            
+            with open('data/last_update.json', 'w') as f:
+                json.dump(update_info, f, indent=2)
+                
+            self.logger.info(f"Exported {len(density_df)} density points and {len(posts_df)} posts")
+            
+            # Commit and push to GitHub
+            self.commit_to_github()
+            
+        except Exception as e:
+            self.logger.error(f"Error exporting visualization data: {str(e)}")
+
+    def commit_to_github(self):
+        """Commit updated JSON files to GitHub"""
+        try:
+            import subprocess
+            
+            # Configure git (only needed once, but safe to repeat)
+            subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'])
+            subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'])
+            
+            # Add the JSON files
+            subprocess.run(['git', 'add', 'data/density_data.json', 'data/posts.json', 'data/last_update.json'])
+            
+            # Commit with timestamp
+            commit_msg = f"Update visualization data - {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}"
+            result = subprocess.run(['git', 'commit', '-m', commit_msg], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                # Push to GitHub
+                subprocess.run(['git', 'push', 'origin', 'main'])
+                self.logger.info("Successfully pushed updated data to GitHub")
+            else:
+                self.logger.info("No changes to commit")
+                
+        except Exception as e:
+            self.logger.error(f"Error committing to GitHub: {str(e)}")
     
     def run_etl(self):
         """Run the complete ETL pipeline"""

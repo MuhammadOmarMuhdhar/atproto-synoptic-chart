@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATProto Synoptic Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: white;
+            overflow: hidden;
+        }
+        
+        
+        #description-panel {
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 999;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        
+        #chart-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .contour {
+            stroke-width: 0.5;
+        }
+        
+        .post-dot {
+            r: 2;
+            fill: black;
+            stroke: rgba(255, 255, 255, 0.5);
+            stroke-width: 1;
+            cursor: pointer;
+        }
+        
+        .post-dot:hover {
+            r: 4;
+            fill: black;
+        }
+        
+        .tooltip {
+            position: absolute;
+            padding: 15px;
+            background: white;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            pointer-events: none;
+            font-size: 14px;
+            max-width: 320px;
+            z-index: 1000;
+            word-wrap: break-word;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .post-header {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .post-time {
+            font-size: 12px;
+            color: #666;
+            font-weight: normal;
+        }
+        
+        .post-content {
+            line-height: 1.4;
+        }
+        
+        
+        #time-controls {
+            position: absolute;
+            bottom: 50px;
+            left: 60%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        #time-slider {
+            width: 400px;
+            height: 8px;
+            background: #ddd;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        #slider-handle {
+            width: 16px;
+            height: 16px;
+            background: #007bff;
+            border-radius: 50%;
+            position: absolute;
+            top: -4px;
+            cursor: grab;
+        }
+        
+        #slider-handle:active {
+            cursor: grabbing;
+        }
+        
+        #play-button {
+            width: 40px;
+            height: 40px;
+            background: #007bff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #play-button:hover {
+            background: #0056b3;
+        }
+        
+        .play-icon {
+            width: 0;
+            height: 0;
+            border-left: 12px solid white;
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+            margin-left: 3px;
+        }
+        
+        .pause-icon {
+            display: flex;
+            gap: 3px;
+        }
+        
+        .pause-bar {
+            width: 4px;
+            height: 16px;
+            background: white;
+        }
+        
+        #time-display {
+            color: #333;
+            font-weight: normal;
+            font-size: 18px;
+            min-width: 150px;
+            text-align: center;
+        }
+        
+        #zoom-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .zoom-button {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .zoom-button:hover {
+            background: rgba(240, 240, 240, 0.95);
+        }
+    </style>
+</head>
+<body>
+    <div id="description-panel">
+        <h2>ATProto Synoptic Chart</h2>
+        <p>This visualization maps Bluesky posts from the "What's Hot Classic" feed in 2D space, showing how trending topics cluster and evolve over time.</p>
+
+        <h3>What You See</h3>
+        <ul>
+            <li>Colored contours show post density</li>
+            <li>Similar posts cluster together</li>
+            <li>Patterns evolve over time</li>
+        </ul>
+        
+        <h3>How to Use</h3>
+        <ul>
+            <li>Press play to animate through time</li>
+            <li>Use the slider to jump to specific moments</li>
+            <li>Hover over black dots to see posts</li>
+            <li>Zoom and pan to explore</li>
+        </ul>
+        
+        
+    </div>
+    
+    <div id="zoom-controls">
+        <button class="zoom-button" id="zoom-in">+</button>
+        <button class="zoom-button" id="zoom-out">−</button>
+    </div>
+    
+    <div id="chart-container">
+        <svg id="chart"></svg>
+    </div>
+    
+    <div id="time-controls">
+        <button id="play-button">
+            <div class="play-icon"></div>
+        </button>
+        <div id="time-slider">
+            <div id="slider-handle"></div>
+        </div>
+        <div id="time-display"></div>
+    </div>
+    
+    <div class="tooltip" style="opacity: 0;"></div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
