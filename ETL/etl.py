@@ -361,10 +361,27 @@ class ATProtoETL:
             result = subprocess.run(['git', 'commit', '-m', commit_msg], capture_output=True, text=True)
             
             if result.returncode == 0:
-                # Verify we have a valid branch to push
+                # Sync with remote before pushing to avoid conflicts
+                self.logger.info("Syncing with remote repository before push...")
+                
+                # Fetch latest changes from remote
+                subprocess.run(['git', 'fetch', 'origin', 'main'], check=True, capture_output=True)
+                
+                # Get current branch
                 branch_check = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True)
                 current_branch = branch_check.stdout.strip()
                 self.logger.info(f"Current branch: {current_branch}")
+                
+                # Merge remote changes if any exist
+                try:
+                    merge_result = subprocess.run(['git', 'merge', 'origin/main'], 
+                                                capture_output=True, text=True, check=False)
+                    if merge_result.returncode == 0:
+                        self.logger.info("Successfully merged remote changes")
+                    else:
+                        self.logger.info("No remote changes to merge or merge not needed")
+                except Exception as e:
+                    self.logger.info(f"Merge step skipped: {e}")
                 
                 # Push to GitHub with explicit branch reference
                 if current_branch:
