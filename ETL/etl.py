@@ -83,6 +83,10 @@ class ATProtoETL:
         posts_df = pd.DataFrame(posts)
         posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
         
+        # Convert timestamp columns to proper datetime
+        if 'created_at' in posts_df.columns:
+            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], utc=True)
+        
         # Generate UMAP embeddings using saved parametric model
         try:
             embedded_posts = encoder.run(
@@ -193,7 +197,7 @@ class ATProtoETL:
         SELECT uri, text, author, like_count, reply_count, repost_count, created_at, collected_at,
                UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
         FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
-        WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
+        WHERE TIMESTAMP(collected_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
           AND UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
         ORDER BY collected_at DESC
         LIMIT 1000
@@ -236,6 +240,9 @@ class ATProtoETL:
             'posts_count': len(recent_posts_df)
         })
         
+        # Ensure calculated_at is proper timestamp
+        density_df['calculated_at'] = pd.to_datetime(density_df['calculated_at'], utc=True)
+        
         # Save density to BigQuery
         self.logger.info("Loading density data to BigQuery")
         self.bigquery_client.append(
@@ -258,7 +265,7 @@ class ATProtoETL:
             density_query = f"""
             SELECT x, y, density, calculated_at, posts_count
             FROM `{self.project_id}.{self.dataset_id}.{self.density_table}`
-            WHERE calculated_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            WHERE TIMESTAMP(calculated_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY calculated_at DESC
             """
             
@@ -276,7 +283,7 @@ class ATProtoETL:
                    UMAP1, UMAP2, created_at
             FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
             WHERE UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
-            AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+            AND SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', created_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
             ORDER BY created_at DESC
             LIMIT 5000
             """
