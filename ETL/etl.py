@@ -318,13 +318,40 @@ class ATProtoETL:
         """Commit updated JSON files to GitHub"""
         try:
             import subprocess
+            import os
             
-            # Configure git (only needed once, but safe to repeat)
-            subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'])
-            subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'])
+            # Check if we're in a git repository
+            if not os.path.exists('.git'):
+                self.logger.info("Initializing git repository for cloud environment...")
+                
+                # Initialize git repository
+                subprocess.run(['git', 'init'], check=True, capture_output=True)
+                
+                # Configure git user
+                subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'], check=True, capture_output=True)
+                subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'], check=True, capture_output=True)
+                
+                # Add remote with token authentication
+                github_token = os.environ.get('GITHUB_TOKEN')
+                if not github_token:
+                    raise Exception("GITHUB_TOKEN environment variable not found")
+                
+                repo_url = f"https://{github_token}@github.com/MuhammadOmarMuhdhar/atproto-synoptic-chart.git"
+                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], check=True, capture_output=True)
+                
+                # Fetch and checkout main branch
+                subprocess.run(['git', 'fetch', 'origin', 'main'], check=True, capture_output=True)
+                subprocess.run(['git', 'checkout', '-b', 'main', 'origin/main'], check=True, capture_output=True)
+                
+                self.logger.info("Git repository initialized successfully")
+            
+            else:
+                # Configure git (for local environments)
+                subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'], capture_output=True)
+                subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'], capture_output=True)
             
             # Add the JSON files
-            subprocess.run(['git', 'add', 'data/density_data.json', 'data/posts.json', 'data/last_update.json'])
+            subprocess.run(['git', 'add', 'data/density_data.json', 'data/posts.json', 'data/last_update.json'], check=True, capture_output=True)
             
             # Commit with timestamp
             commit_msg = f"Update visualization data - {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}"
@@ -332,11 +359,15 @@ class ATProtoETL:
             
             if result.returncode == 0:
                 # Push to GitHub
-                subprocess.run(['git', 'push', 'origin', 'main'])
-                self.logger.info("Successfully pushed updated data to GitHub")
+                subprocess.run(['git', 'push', 'origin', 'main'], check=True, capture_output=True)
+                self.logger.info(f"Successfully pushed updated data to GitHub: {commit_msg}")
             else:
                 self.logger.info("No changes to commit")
                 
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Git command failed: {e.cmd} (return code: {e.returncode})")
+            if e.stderr:
+                self.logger.error(f"Git error: {e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr}")
         except Exception as e:
             self.logger.error(f"Error committing to GitHub: {str(e)}")
     
