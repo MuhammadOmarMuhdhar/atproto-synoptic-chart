@@ -83,9 +83,10 @@ class ATProtoETL:
         posts_df = pd.DataFrame(posts)
         posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
         
-        # Convert timestamp columns to proper datetime
+        # Convert timestamp columns to proper datetime, then back to string for BigQuery compatibility
         if 'created_at' in posts_df.columns:
             posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], format='ISO8601', utc=True)
+            posts_df['created_at'] = posts_df['created_at'].dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         
         # Generate UMAP embeddings using saved parametric model
         try:
