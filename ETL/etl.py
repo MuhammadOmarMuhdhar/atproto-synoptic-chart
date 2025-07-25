@@ -81,7 +81,7 @@ class ATProtoETL:
         
         # Convert to DataFrame and add timestamp
         posts_df = pd.DataFrame(posts)
-        posts_df['collected_at'] = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M:%S UTC')
+        posts_df['collected_at'] = pd.Timestamp.now(tz='UTC')
         
         # Convert timestamp columns to proper datetime, then back to string for BigQuery compatibility
         if 'created_at' in posts_df.columns:
@@ -198,7 +198,7 @@ class ATProtoETL:
         SELECT uri, text, author, like_count, reply_count, repost_count, created_at, collected_at,
                UMAP1, UMAP2, UMAP3, UMAP4, UMAP5
         FROM `{self.project_id}.{self.dataset_id}.{self.posts_table}`
-        WHERE PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S %Z', collected_at) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
+        WHERE collected_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
           AND UMAP1 IS NOT NULL AND UMAP2 IS NOT NULL
         ORDER BY collected_at DESC
         LIMIT 1000
