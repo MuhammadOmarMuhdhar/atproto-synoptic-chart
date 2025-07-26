@@ -372,25 +372,61 @@ class ATProtoETL:
                 current_branch = branch_check.stdout.strip()
                 self.logger.info(f"Current branch: {current_branch}")
                 
+                # Check current branch status before merge
+                status_result = subprocess.run(['git', 'status', '--porcelain=v1'], capture_output=True, text=True)
+                self.logger.info(f"Git status before merge: {status_result.stdout}")
+                
+                # Check commit hashes for debugging
+                local_hash = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True)
+                remote_hash = subprocess.run(['git', 'rev-parse', 'origin/main'], capture_output=True, text=True)
+                self.logger.info(f"Local HEAD: {local_hash.stdout.strip()}")
+                self.logger.info(f"Remote HEAD: {remote_hash.stdout.strip()}")
+                
                 # Merge remote changes if any exist
                 try:
                     merge_result = subprocess.run(['git', 'merge', 'origin/main'], 
                                                 capture_output=True, text=True, check=False)
                     if merge_result.returncode == 0:
                         self.logger.info("Successfully merged remote changes")
+                        if merge_result.stdout:
+                            self.logger.info(f"Merge output: {merge_result.stdout}")
                     else:
                         self.logger.info("No remote changes to merge or merge not needed")
+                        if merge_result.stderr:
+                            self.logger.info(f"Merge stderr: {merge_result.stderr}")
                 except Exception as e:
                     self.logger.info(f"Merge step skipped: {e}")
                 
-                # Push to GitHub with explicit branch reference
-                if current_branch:
-                    subprocess.run(['git', 'push', 'origin', f'{current_branch}:main'], check=True, capture_output=True)
-                    self.logger.info(f"Successfully pushed updated data to GitHub: {commit_msg}")
-                else:
-                    # Fallback: push current HEAD to main
-                    subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True, capture_output=True)
-                    self.logger.info(f"Successfully pushed updated data to GitHub (HEAD): {commit_msg}")
+                # Final status check before push
+                final_status = subprocess.run(['git', 'status', '--porcelain=v1'], capture_output=True, text=True)
+                self.logger.info(f"Git status before push: {final_status.stdout}")
+                
+                # Check if we're ahead/behind remote
+                tracking_info = subprocess.run(['git', 'status', '-b', '--porcelain=v1'], capture_output=True, text=True)
+                self.logger.info(f"Branch tracking status: {tracking_info.stdout.split()[0] if tracking_info.stdout else 'No tracking info'}")
+                
+                # Push to GitHub with force-with-lease for safety
+                try:
+                    if current_branch:
+                        self.logger.info(f"Attempting force push with lease from {current_branch} to main")
+                        subprocess.run(['git', 'push', '--force-with-lease', 'origin', f'{current_branch}:main'], check=True, capture_output=True)
+                        self.logger.info(f"Successfully force-pushed updated data to GitHub: {commit_msg}")
+                    else:
+                        # Fallback: push current HEAD to main with force-with-lease
+                        self.logger.info("Attempting force push with lease from HEAD to main")
+                        subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], check=True, capture_output=True)
+                        self.logger.info(f"Successfully force-pushed updated data to GitHub (HEAD): {commit_msg}")
+                except subprocess.CalledProcessError as e:
+                    self.logger.error(f"Force push with lease failed: {e.cmd} (return code: {e.returncode})")
+                    if e.stderr:
+                        self.logger.error(f"Push error output: {e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr}")
+                    
+                    # Log final diagnostic info
+                    final_local_hash = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True)
+                    final_remote_hash = subprocess.run(['git', 'rev-parse', 'origin/main'], capture_output=True, text=True)
+                    self.logger.error(f"Final local HEAD: {final_local_hash.stdout.strip()}")
+                    self.logger.error(f"Final remote HEAD: {final_remote_hash.stdout.strip()}")
+                    raise
             else:
                 self.logger.info("No changes to commit")
                 
