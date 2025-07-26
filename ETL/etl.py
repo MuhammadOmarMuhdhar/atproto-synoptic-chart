@@ -307,9 +307,6 @@ class ATProtoETL:
             posts_df['UMAP1'] = pd.to_numeric(posts_df['UMAP1'], errors='coerce')
             posts_df['UMAP2'] = pd.to_numeric(posts_df['UMAP2'], errors='coerce')
             
-            # Fix timestamp format - Convert to ISO format with Z
-            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], utc=True).dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            
             posts_df.to_json('data/posts.json', orient='records', date_format='iso')
             
             # Create update timestamp file
@@ -325,134 +322,8 @@ class ATProtoETL:
                 
             self.logger.info(f"Exported {len(density_df)} density points and {len(posts_df)} posts")
             
-            # Commit and push to GitHub
-            self.commit_to_github()
-            
         except Exception as e:
             self.logger.error(f"Error exporting visualization data: {str(e)}")
-
-    def commit_to_github(self):
-        """Commit updated JSON files to GitHub"""
-        try:
-            import subprocess
-            import os
-            
-            # Check if we're in a git repository
-            if not os.path.exists('.git'):
-                self.logger.info("Initializing git repository for cloud environment...")
-                
-                # Initialize git repository
-                subprocess.run(['git', 'init'], check=True, capture_output=True)
-                
-                # Configure git user
-                subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'], check=True, capture_output=True)
-                subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'], check=True, capture_output=True)
-                
-                # Add remote with token authentication
-                github_token = os.environ.get('GITHUB_TOKEN')
-                if not github_token:
-                    raise Exception("GITHUB_TOKEN environment variable not found")
-                
-                repo_url = f"https://{github_token}@github.com/MuhammadOmarMuhdhar/atproto-synoptic-chart.git"
-                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], check=True, capture_output=True)
-                
-                # Fetch and checkout main branch
-                subprocess.run(['git', 'fetch', 'origin', 'main'], check=True, capture_output=True)
-                subprocess.run(['git', 'checkout', '-b', 'main', 'origin/main'], check=True, capture_output=True)
-                
-                # Set up tracking branch properly
-                subprocess.run(['git', 'branch', '--set-upstream-to=origin/main', 'main'], check=True, capture_output=True)
-                
-                self.logger.info("Git repository initialized successfully")
-            
-            else:
-                # Configure git (for local environments)
-                subprocess.run(['git', 'config', 'user.name', 'Railway ETL Bot'], capture_output=True)
-                subprocess.run(['git', 'config', 'user.email', 'etl@railway.app'], capture_output=True)
-            
-            # Add the JSON files
-            subprocess.run(['git', 'add', 'data/density_data.json', 'data/posts.json', 'data/last_update.json'], check=True, capture_output=True)
-            
-            # Commit with timestamp
-            commit_msg = f"Update visualization data - {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}"
-            result = subprocess.run(['git', 'commit', '-m', commit_msg], capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                # Sync with remote before pushing to avoid conflicts
-                self.logger.info("Syncing with remote repository before push...")
-                
-                # Fetch latest changes from remote
-                subprocess.run(['git', 'fetch', 'origin', 'main'], check=True, capture_output=True)
-                
-                # Get current branch
-                branch_check = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True)
-                current_branch = branch_check.stdout.strip()
-                self.logger.info(f"Current branch: {current_branch}")
-                
-                # Check current branch status before merge
-                status_result = subprocess.run(['git', 'status', '--porcelain=v1'], capture_output=True, text=True)
-                self.logger.info(f"Git status before merge: {status_result.stdout}")
-                
-                # Check commit hashes for debugging
-                local_hash = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True)
-                remote_hash = subprocess.run(['git', 'rev-parse', 'origin/main'], capture_output=True, text=True)
-                self.logger.info(f"Local HEAD: {local_hash.stdout.strip()}")
-                self.logger.info(f"Remote HEAD: {remote_hash.stdout.strip()}")
-                
-                # Merge remote changes if any exist
-                try:
-                    merge_result = subprocess.run(['git', 'merge', 'origin/main'], 
-                                                capture_output=True, text=True, check=False)
-                    if merge_result.returncode == 0:
-                        self.logger.info("Successfully merged remote changes")
-                        if merge_result.stdout:
-                            self.logger.info(f"Merge output: {merge_result.stdout}")
-                    else:
-                        self.logger.info("No remote changes to merge or merge not needed")
-                        if merge_result.stderr:
-                            self.logger.info(f"Merge stderr: {merge_result.stderr}")
-                except Exception as e:
-                    self.logger.info(f"Merge step skipped: {e}")
-                
-                # Final status check before push
-                final_status = subprocess.run(['git', 'status', '--porcelain=v1'], capture_output=True, text=True)
-                self.logger.info(f"Git status before push: {final_status.stdout}")
-                
-                # Check if we're ahead/behind remote
-                tracking_info = subprocess.run(['git', 'status', '-b', '--porcelain=v1'], capture_output=True, text=True)
-                self.logger.info(f"Branch tracking status: {tracking_info.stdout.split()[0] if tracking_info.stdout else 'No tracking info'}")
-                
-                # Push to GitHub with force-with-lease for safety
-                try:
-                    if current_branch:
-                        self.logger.info(f"Attempting force push with lease from {current_branch} to main")
-                        subprocess.run(['git', 'push', '--force-with-lease', 'origin', f'{current_branch}:main'], check=True, capture_output=True)
-                        self.logger.info(f"Successfully force-pushed updated data to GitHub: {commit_msg}")
-                    else:
-                        # Fallback: push current HEAD to main with force-with-lease
-                        self.logger.info("Attempting force push with lease from HEAD to main")
-                        subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], check=True, capture_output=True)
-                        self.logger.info(f"Successfully force-pushed updated data to GitHub (HEAD): {commit_msg}")
-                except subprocess.CalledProcessError as e:
-                    self.logger.error(f"Force push with lease failed: {e.cmd} (return code: {e.returncode})")
-                    if e.stderr:
-                        self.logger.error(f"Push error output: {e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr}")
-                    
-                    # Log final diagnostic info
-                    final_local_hash = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True)
-                    final_remote_hash = subprocess.run(['git', 'rev-parse', 'origin/main'], capture_output=True, text=True)
-                    self.logger.error(f"Final local HEAD: {final_local_hash.stdout.strip()}")
-                    self.logger.error(f"Final remote HEAD: {final_remote_hash.stdout.strip()}")
-                    raise
-            else:
-                self.logger.info("No changes to commit")
-                
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Git command failed: {e.cmd} (return code: {e.returncode})")
-            if e.stderr:
-                self.logger.error(f"Git error: {e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr}")
-        except Exception as e:
-            self.logger.error(f"Error committing to GitHub: {str(e)}")
     
     def run_etl(self):
         """Run the complete ETL pipeline"""
