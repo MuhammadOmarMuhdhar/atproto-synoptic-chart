@@ -307,6 +307,9 @@ class ATProtoETL:
             posts_df['UMAP1'] = pd.to_numeric(posts_df['UMAP1'], errors='coerce')
             posts_df['UMAP2'] = pd.to_numeric(posts_df['UMAP2'], errors='coerce')
             
+            # Fix timestamp format - Convert to ISO format with Z
+            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], utc=True).dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+            
             posts_df.to_json('data/posts.json', orient='records', date_format='iso')
             
             # Create update timestamp file
