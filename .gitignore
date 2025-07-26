@@ -45,3 +45,6 @@ test_connections.py
 visuals/
 export_data.py
 clear_bigquery.py
+clear_local_data.py
+download_raw_data.py
+test_debug.ipynb

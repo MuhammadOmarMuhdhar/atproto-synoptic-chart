@@ -272,6 +272,12 @@ class ATProtoETL:
             
             density_df = self.bigquery_client.execute_query(density_query)
             
+            # Convert string columns back to numeric for proper JSON export
+            density_df['x'] = pd.to_numeric(density_df['x'], errors='coerce')
+            density_df['y'] = pd.to_numeric(density_df['y'], errors='coerce') 
+            density_df['density'] = pd.to_numeric(density_df['density'], errors='coerce')
+            density_df['posts_count'] = pd.to_numeric(density_df['posts_count'], errors='coerce')
+            
             # Ensure data directory exists
             import os
             os.makedirs('data', exist_ok=True)
@@ -293,6 +299,17 @@ class ATProtoETL:
             """
             
             posts_df = self.bigquery_client.execute_query(posts_query)
+            
+            # Convert string columns back to numeric for proper JSON export
+            posts_df['like_count'] = pd.to_numeric(posts_df['like_count'], errors='coerce')
+            posts_df['reply_count'] = pd.to_numeric(posts_df['reply_count'], errors='coerce')
+            posts_df['repost_count'] = pd.to_numeric(posts_df['repost_count'], errors='coerce')
+            posts_df['UMAP1'] = pd.to_numeric(posts_df['UMAP1'], errors='coerce')
+            posts_df['UMAP2'] = pd.to_numeric(posts_df['UMAP2'], errors='coerce')
+            
+            # Fix timestamp format - Convert to ISO format with Z
+            posts_df['created_at'] = pd.to_datetime(posts_df['created_at'], utc=True).dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+            
             posts_df.to_json('data/posts.json', orient='records', date_format='iso')
             
             # Create update timestamp file
