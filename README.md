@@ -1,7 +1,7 @@
 
 **[View Live Visualization](https://muhammadomarmuhdhar.github.io/atproto-synoptic-chart/visualization/)**
 
-# ATProto Synoptic Chart
+# Bluesky Synoptic Chart
 
 A real-time visualization of trending topics on Bluesky, showing how conversations cluster and evolve over time using UMAP dimensionality reduction.
 
