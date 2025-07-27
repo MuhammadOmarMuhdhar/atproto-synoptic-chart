@@ -1,11 +1,7 @@
 name: ATProto ETL Pipeline
 
 on:
-  schedule:
-    # Run every 10 minutes
-    - cron: '*/10 * * * *'
-  
-  # Allow manual triggering for testing
+  # Triggered by Google Cloud Scheduler for reliable scheduling
   workflow_dispatch:
 
 jobs:
