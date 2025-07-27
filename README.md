@@ -1,5 +1,5 @@
 
-**[View Live Visualization](https://muhammadomarmuhdhar.github.io/atproto-synoptic-chart/visualization/)**
+**[View Live Visualization](https://muhammadomarmuhdhar.github.io/bluesky-synoptic-chart/visualization/)**
 
 # Bluesky Synoptic Chart
 
