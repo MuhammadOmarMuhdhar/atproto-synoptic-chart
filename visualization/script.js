@@ -375,9 +375,6 @@ function renderTopicClusters() {
         .style("font-size", "14px")
         .style("font-weight", "bold")
         .style("fill", "red")
-        .style("stroke", "white")
-        .style("stroke-width", "2px")
-        .style("paint-order", "stroke")
         .text(d => d.topic);
 }
 
