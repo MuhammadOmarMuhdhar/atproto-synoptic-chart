@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATProto Synoptic Chart</title>
+    <title>Bluesky Synoptic Chart</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
@@ -198,14 +198,15 @@
 </head>
 <body>
     <div id="description-panel">
-        <h2>ATProto Synoptic Chart</h2>
+        <h2>Bluesky Synoptic Chart</h2>
         <p>This visualization maps Bluesky posts from the "What's Hot Classic" feed in 2D space, showing how trending topics cluster and evolve over time.</p>
 
         <h3>What You See</h3>
         <ul>
-            <li>Colored contours show post density</li>
-            <li>Similar posts cluster together</li>
-            <li>Patterns evolve over time</li>
+            <li><strong>Colored contours</strong> show post density regions</li>
+            <li><strong>Black dots</strong> represent individual posts</li>
+            <li><strong>Red topic labels</strong> identify discussion themes</li>
+            <li>Similar posts cluster together in semantic space</li>
         </ul>
         
         <h3>How to Use</h3>
@@ -213,6 +214,7 @@
             <li>Press play to animate through time</li>
             <li>Use the slider to jump to specific moments</li>
             <li>Hover over black dots to see posts</li>
+            <li>The closer a post is to a label, the more it relates to that topic</li>
             <li>Zoom and pan to explore</li>
         </ul>
         
