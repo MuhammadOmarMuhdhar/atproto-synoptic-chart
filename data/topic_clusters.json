@@ -1,0 +1,38 @@
+[
+  {
+    "cluster":0,
+    "UMAP1":42.0455322266,
+    "UMAP2":40.4470672607,
+    "topic":"Politics"
+  },
+  {
+    "cluster":1,
+    "UMAP1":-53.5389099121,
+    "UMAP2":17.7767362595,
+    "topic":"Sports & Reality TV"
+  },
+  {
+    "cluster":2,
+    "UMAP1":-11.558965683,
+    "UMAP2":-42.6543884277,
+    "topic":"NSFW Content"
+  },
+  {
+    "cluster":3,
+    "UMAP1":-3.7506444454,
+    "UMAP2":0.5743083954,
+    "topic":"Microblogging"
+  },
+  {
+    "cluster":4,
+    "UMAP1":79.3277587891,
+    "UMAP2":28.2308959961,
+    "topic":"Geopolitics"
+  },
+  {
+    "cluster":5,
+    "UMAP1":-42.9848976135,
+    "UMAP2":-24.9097690582,
+    "topic":"Art & Online Culture"
+  }
+]

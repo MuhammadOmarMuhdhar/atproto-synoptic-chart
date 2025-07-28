@@ -7,12 +7,13 @@ import pickle
 import os
 
 def run(posts,
-        model_name='all-MiniLM-L6-v2',
+        model_name='sentence-transformers/all-mpnet-base-v2',
         batch_size=100,
         umap_components=5,
         random_state=42,
-        min_dist=0.1,
-        n_neighbors=500,
+        min_dist=0.0,
+        n_neighbors=15,
+        spread=20,
         device=None,
         umap_model_path=None,
         use_parametric=False,
@@ -239,6 +240,7 @@ def run(posts,
                         random_state=random_state,
                         min_dist=min_dist,
                         n_neighbors=n_neighbors,
+                        spread=spread,
                         batch_size=min(batch_size, 128)
                     )
                     umap_embeddings = umap_instance.fit_transform(all_embeddings)
@@ -254,6 +256,7 @@ def run(posts,
                     random_state=random_state,
                     min_dist=min_dist,
                     n_neighbors=n_neighbors,
+                    spread=spread,
                     batch_size=min(batch_size, 128)
                 )
                 umap_embeddings = umap_instance.fit_transform(all_embeddings)
@@ -269,6 +272,7 @@ def run(posts,
                 random_state=random_state,
                 min_dist=min_dist,
                 n_neighbors=n_neighbors,
+                spread=spread,
                 batch_size=min(batch_size, 128)
                  )
             
@@ -293,8 +297,8 @@ def run(posts,
                 random_state=random_state,
                 min_dist=min_dist,
                 n_neighbors=n_neighbors,
-                spread=1.5,
-                metric='cosine'
+                spread=spread,
+                metric='euclidean',
             )
             umap_embeddings = umap_instance.fit_transform(all_embeddings)
             print(f"✅ Applied standard UMAP to {len(all_embeddings)} embeddings")

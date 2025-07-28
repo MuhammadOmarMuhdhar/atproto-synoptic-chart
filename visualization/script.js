@@ -1,9 +1,10 @@
 // Global variables
 let densityData = [];
 let postsData = [];
+let topicClusters = [];
 let postsWithCoords = [];
 let svg, g, xScale, yScale, zoom;
-let dotsGroup;
+let dotsGroup, topicLabelsGroup;
 let dataByTime = new Map();
 let timeSlices = [];
 let currentTimeIndex = 0;
@@ -29,10 +30,12 @@ const colorScale = d3.scaleSequential(d3.interpolateBlues).domain([0, 1]);
 // Load data and initialize visualization
 Promise.all([
     d3.json("../data/density_data.json"),
-    d3.json("../data/posts.json")
-]).then(([density, posts]) => {
+    d3.json("../data/posts.json"),
+    d3.json("../data/topic_clusters.json")
+]).then(([density, posts, topics]) => {
     densityData = density;
     postsData = posts;
+    topicClusters = topics;
     
     // Filter posts that have coordinates
     postsWithCoords = postsData.filter(post => 
@@ -41,7 +44,7 @@ Promise.all([
         !isNaN(post.UMAP1) && !isNaN(post.UMAP2)
     );
     
-    console.log(`Loaded ${densityData.length} density points and ${postsWithCoords.length} posts with coordinates`);
+    console.log(`Loaded ${densityData.length} density points, ${postsWithCoords.length} posts with coordinates, and ${topicClusters.length} topic clusters`);
     
     // Group density data by time
     dataByTime = d3.group(densityData, d => d.calculated_at);
@@ -88,9 +91,13 @@ function initializeVisualization() {
     // Create main group for zoomable content
     g = svg.append("g");
     
-    // Set up scales
-    const allX = densityData.map(d => d.x).concat(postsWithCoords.map(d => d.UMAP1));
-    const allY = densityData.map(d => d.y).concat(postsWithCoords.map(d => d.UMAP2));
+    // Set up scales - include topic cluster coordinates for proper boundary alignment
+    const allX = densityData.map(d => d.x)
+        .concat(postsWithCoords.map(d => d.UMAP1))
+        .concat(topicClusters.map(d => d.UMAP1));
+    const allY = densityData.map(d => d.y)
+        .concat(postsWithCoords.map(d => d.UMAP2))
+        .concat(topicClusters.map(d => d.UMAP2));
     
     const margin = { top: 50, right: 50, bottom: 100, left: 100 };
     const plotSize = Math.min(width - margin.left - margin.right, height - margin.top - margin.bottom) * 0.8;
@@ -161,6 +168,57 @@ function initializeVisualization() {
     // Create group for dots (not clipped, but will be transformed with zoom)
     dotsGroup = g.append("g")
         .attr("class", "dots");
+    
+    // Create group for topic labels (will be transformed with zoom)
+    topicLabelsGroup = g.append("g")
+        .attr("class", "topic-labels");
+    
+    // Add static red topic labels at edge positions
+    topicLabelsGroup.selectAll(".topic-label")
+        .data(topicClusters)
+        .enter()
+        .append("text")
+        .attr("class", "topic-label")
+        .attr("x", d => {
+            const pos = adjustToEdgeIfNeeded(d.UMAP1, d.UMAP2, xScale, yScale, {width: chartWidth, height: chartHeight}, margin);
+            return pos.x;
+        })
+        .attr("y", d => {
+            const pos = adjustToEdgeIfNeeded(d.UMAP1, d.UMAP2, xScale, yScale, {width: chartWidth, height: chartHeight}, margin);
+            return pos.y;
+        })
+        .text(d => d.topic)
+        .style("fill", "red")
+        .style("font-weight", "bold")
+        .style("font-size", "15px")
+        .style("text-anchor", "middle")
+        .style("pointer-events", "none")
+        .style("text-shadow", "1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white");
+}
+
+function adjustToEdgeIfNeeded(umap1, umap2, xScale, yScale, chartBounds, margin) {
+    // Get original scaled position
+    const originalX = xScale(umap1);
+    const originalY = yScale(umap2);
+    
+    // Calculate distance from center
+    const centerX = margin.left + chartBounds.width / 2;
+    const centerY = margin.top + chartBounds.height / 2;
+    const distanceFromCenter = Math.sqrt(Math.pow(originalX - centerX, 2) + Math.pow(originalY - centerY, 2));
+    
+    // If close to center, keep original position
+    const threshold = Math.min(chartBounds.width, chartBounds.height) * 0.0; // 15% of chart size
+    if (distanceFromCenter < threshold) {
+        return { x: originalX, y: originalY };
+    }
+    
+    // If far from center, push to edge in same direction
+    const angle = Math.atan2(originalY - centerY, originalX - centerX);
+    const edgeDistance = Math.min(chartBounds.width, chartBounds.height) * 0.0; // 45% to edge
+    const edgeX = centerX + (edgeDistance * Math.cos(angle));
+    const edgeY = centerY + (edgeDistance * Math.sin(angle));
+    
+    return { x: edgeX, y: edgeY };
 }
 
 function handleZoom(event) {
