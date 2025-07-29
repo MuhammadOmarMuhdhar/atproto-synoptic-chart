@@ -1,26 +1,32 @@
 [
   {
     "cluster":0,
-    "UMAP1":14.7953977585,
-    "UMAP2":-11.7446498871,
-    "topic":"Geopolitical Conflict"
+    "UMAP1":2.7638235092,
+    "UMAP2":6.696593523,
+    "topic":"Politics"
   },
   {
     "cluster":1,
-    "UMAP1":-13.2440576553,
-    "UMAP2":5.1335406303,
-    "topic":"Pop Culture Trends"
-  },
-  {
-    "cluster":2,
-    "UMAP1":-13.0933103561,
-    "UMAP2":-7.0414304733,
+    "UMAP1":0.9539026022,
+    "UMAP2":-7.4001159668,
     "topic":"NSFW Content"
   },
   {
+    "cluster":2,
+    "UMAP1":1.5015761256,
+    "UMAP2":-0.3753056228,
+    "topic":"Pop Culture"
+  },
+  {
     "cluster":3,
-    "UMAP1":7.9528913498,
-    "UMAP2":1.5663394928,
-    "topic":"Politics"
+    "UMAP1":-3.4407477379,
+    "UMAP2":11.0626802444,
+    "topic":"Geopolitics"
+  },
+  {
+    "cluster":4,
+    "UMAP1":-4.8029255867,
+    "UMAP2":-7.7569694519,
+    "topic":"Digital Art"
   }
 ]
